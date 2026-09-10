@@ -86,7 +86,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{gq.expected:<7} {gq.id:<26} {gq.question[:70]}")
         return 0
 
-    retriever = HybridRetriever.load(args.index, reranker=make_reranker("auto"))
+    retriever = HybridRetriever.load(args.index, reranker=make_reranker("auto")) 
+    if retriever.store.count() == 0:
+        log.error("index at %S is EMPTY (0 vectors) - refusing to evaluate "
+                  "against nothing. Rebuild the corpus first (stage 1 -> 2 -> 3). "
+                  " Anempty-corpus run 'passes' its refusal controls vacuously "
+                  "and would pin a meaningless baseline.", args.index)
+        return 1
+
     generator = (FakeGenerator() if args.dry_run
                  else OllamaGenerator(model=args.model, url=args.url))
     judge_gen = (OllamaGenerator(model=args.model, url=args.url, temperature=0.0)
@@ -125,23 +132,28 @@ def main(argv: list[str] | None = None) -> int:
 
     if baseline is not None:
         d = diff_reports(report, baseline, args.delta)
+        if d.get("scope_note"):
+            print(f"\nWARNING: {d['scope_note']}")
         if d["regressions"]:
             print("\nREGRESSIONS vs baseline:")
             for reg in d["regressions"]:
                 print(f" {reg['metric']}: {reg['old']} -> {reg['new']} "
-                      f"({reg['delta']})")
+                      f"({reg['delta']:+.3f})")
         if d["improvements"]:
             print("improvements:",
-                  ", ".join(f"{i['metric']} +{-i['delta']:.3f}"
+                  ", ".join(f"{i['metric']} {i['delta']:+.3f}"
                             for i in d["improvements"]))
+        for ch in d.get("count_changes", []):
+            print(f" count: {ch['metric']} = {ch['new']} (was {ch['old']})")
         if d["flips"]:
             print("question flips (pass -> fail):",
                   ", ".join(f["id"] for f in d["flips"]))
         if d["regressions"] or d["flips"]:
             return 1
-        print("no regressions vs baseline")
+        print("\nno regressions vs baseline")
     return 0
 
+    path = save_report(report, args.out_dir,update_latest=not (args.dry_run or args.only))
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -227,3 +227,43 @@ def test_diff_reports_flags_regression():
     assert d["flips"][0]["id"] == "q1"
     ok = diff_reports(rep(0.9, True), rep(0.92, True), delta=0.05)
     assert not ok["regressions"] and not ok["flips"]
+
+def test_diff_reports_scope_guard_suppresses_counts():
+    def rep(dry, total):
+        return {"dry_run": dry, "aggregates": {"questions_total": total,
+                                               "answered": 0, "context_recall": 0.9},
+                "questions": []}
+    d = diff_reports(rep(False, 17), rep(True, 13))
+    assert d["scope_note"] # dry-run baseline vs full run
+    assert d["count_changes"] == [] # counts never fabricate regressions
+    assert d["regressions"] == []
+
+
+def test_diff_counts_informational_not_gating():
+    def rep(answered):
+        return {"dry_run": False, "golden_fingerprint": "g",
+                "aggregates": {"questions_total": 10, "answered": answered,
+                               "context_recall": 0.9},
+                "questions": []}
+    d = diff_reports(rep(7), rep(9))
+    assert d["regressions"] == [] # count drop is not a metric drop
+    assert {"metric": "answered", "old": 9, "new": 7} in d["count_changes"]
+
+
+def test_save_report_latest_only_for_full_scope(tmp_path):
+    report = {"schema_version": "eval-1.0", "aggregates": {}, "questions": []}
+    p1 = save_report(report, tmp_path / "runs", update_latest=False)
+    assert p1.exists() and not (tmp_path / "runs" / "latest.json").exists()
+    save_report(report, tmp_path / "runs", update_latest=True)
+    assert (tmp_path / "runs" / "latest.json").exists()
+
+def test_diff_scope_guard_includes_corpus_change():
+    def rep(vectors):
+        return {"dry_run": False, "golden_fingerprint": "g",
+                "corpus": {"vectors": vectors},
+                "aggregates": {"question_total": 17, "context_recall": 0.9},
+                "questions": []}
+    d = diff_reports(rep(2324), rep(0))
+    assert d["scope_note"]
+    same = diff_reports(rep(2324), rep(2324))
+    assert same["scope_note"] is None

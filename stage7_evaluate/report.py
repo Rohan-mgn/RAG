@@ -106,10 +106,12 @@ def diff_reports(new: dict, old: dict, delta: float = 0.05) -> dict:
     scope_note = None
     if (new.get("dry_run") != old.get("dry_run")
             or na.get("questions_total") != oa.get("questions_total")
-            or new.get("golden_fingerprint") != old.get("golden_fingerprint")):
-        scope_note = ("baseline scope differs (dry-run flag, question count, or "
-                      "golden set) — count diffs suppressed; score diffs bundle "
-                      "confounds, read them with the dry-run attribution steps")
+            or new.get("golden_fingerprint") != old.get("golden_fingerprint")
+            or (new.get("corpus") or {}).get("vectors") != (old.get("corpus") or {}).get("vectors")):
+        scope_note = ("baseline scope differs (dry-run flag, question count, "
+                      "golden set, or corpus size) — count diffs suppressed; "
+                      "score diffs bundle confounds, read them with the dry-run "
+                       "attribution steps")
 
     regressions, improvements = [], []
     for k in METRIC_KEYS:
